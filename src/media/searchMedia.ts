@@ -60,7 +60,7 @@ export async function searchMedia({
       return resolved;
     }
 
-    const r = await fetch(`/api/brave/images?q=${encodeURIComponent(trimmed)}&count=10`);
+    const r = await fetch(`/api/unsplash?q=${encodeURIComponent(trimmed)}&count=10`);
     if (!r.ok) {
       console.log(`[media] img FAIL "${trimmed}" → ${r.status}`);
       return null;

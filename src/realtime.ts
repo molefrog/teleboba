@@ -12,7 +12,7 @@ export interface RealtimeConfig {
   traitName?: string;
 }
 
-const MODEL = "gpt-realtime-1.5";
+const DEFAULT_MODEL = "gpt-realtime-2";
 
 const SFX_ENUM = [
   "applause",
@@ -111,7 +111,7 @@ const TOOLS = [
     type: "function",
     name: "set_background",
     description:
-      "Set a full-screen thematic background behind the content. Background and content are INDEPENDENT layers: changing show_text/show_timeline/show_alternatives does NOT affect the background. The background persists until you call set_background OR clear_background again. Use for atmospheric illustration of the current topic. Keep queries 1–3 concrete words.",
+      "Set a full-screen thematic background behind the content. Background and content are INDEPENDENT layers: changing show_text/show_timeline/show_alternatives does NOT affect the background. The background persists until you call set_background OR clear_background again.\n\nQUERY RULES — READ CAREFULLY:\n- The query MUST be derived from a concrete noun the speaker JUST uttered or the actual topic they are discussing RIGHT NOW.\n- There is NO menu / fallback / default list of subjects. Do NOT reach for generic 'business' nouns (boardroom, office, meeting, handshake, skyline, chart, whiteboard) unless the speaker actually just talked about that specific thing.\n- NEVER append tone/mood adjectives (cinematic, epic, dramatic, aesthetic, vibe, mood, slow motion, hero shot, 4k). GIPHY and Brave return junk for those.\n- 1–3 concrete words, all lowercase. Prefer 2.\n- If the speaker's current content has no concrete visual subject — DON'T call set_background at all. Skip it. Leaving the previous background is fine.\n- If you just set a background on the same topic, don't replace it with something nearly identical.",
     parameters: {
       type: "object",
       properties: {
@@ -192,6 +192,12 @@ function buildInstructions(traitInstruction?: string, traitName?: string): strin
   const nameLine = traitName
     ? `The user picked the "${traitName}" trait for this session. Treat it as a HARD directive, not a suggestion.`
     : "";
+  const langBlock = `
+LANGUAGE
+- The speaker may talk in English OR Russian — either is expected.
+- Regardless of the speaker's language, ALL text you emit via show_text / show_timeline / show_alternatives MUST be in ENGLISH. Translate the speaker's Russian idea into a concise English headline.
+- set_background queries are always in ENGLISH (search engines index English best).
+`;
   return `ROLE
 - You are a silent visual director for a live presenter.
 - Output is TOOL CALLS ONLY. Never prose, never speech.
@@ -236,6 +242,7 @@ WHEN TO FIRE
 - emoji_rain / play_sfx: PEAKS only — jokes landing, celebrations, failures, reveals. Never back-to-back (unless the current trait overrides this).
 - no_op: default when in doubt.
 
+${langBlock}
 ${nameLine}
 ${traitBlock}`;
 }
@@ -256,6 +263,7 @@ export async function startRealtime(
   const ephemeral: string =
     tokenJson?.value ?? tokenJson?.client_secret?.value ?? tokenJson?.client_secret;
   if (!ephemeral) throw new Error("no ephemeral token in response");
+  const model: string = tokenJson?.model ?? DEFAULT_MODEL;
 
   onStatus("connecting");
   const pc = new RTCPeerConnection();
@@ -271,7 +279,7 @@ export async function startRealtime(
       type: "session.update",
       session: {
         type: "realtime",
-        model: MODEL,
+        model,
         output_modalities: ["text"],
         tool_choice: "required",
         tools: TOOLS,
@@ -337,7 +345,7 @@ export async function startRealtime(
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  const sdpRes = await fetch(`https://api.openai.com/v1/realtime/calls?model=${MODEL}`, {
+  const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
     method: "POST",
     body: offer.sdp,
     headers: {
